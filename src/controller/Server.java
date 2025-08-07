@@ -34,12 +34,18 @@ public class Server {
     private static ExecutorService executor = Executors.newFixedThreadPool(10);
     //单线程的心跳检测器，防止并发
     private static ScheduledExecutorService heartbeatExecutor = Executors.newScheduledThreadPool(1);
+    //
+    private static ScheduledExecutorService heartbeat = Executors.newScheduledThreadPool(1);
+
     private static ServerFrame serverFrame;
     private static int port = 8888;
     //维护用户和其所在通道的连接
     private static final Map<String, SocketChannel> onlineUsers = new ConcurrentHashMap<>();
     //检测最后的心跳时间
     private static final Map<SocketChannel, Long> lastHeartbeat = new ConcurrentHashMap<>();
+    //检测心跳包的发送间隔是否正确
+    private static final Map<SocketChannel, Long> lastHeart = new ConcurrentHashMap<>();
+
 
     public  static void main(String[] args) throws IOException {
         selector = Selector.open();
@@ -60,6 +66,7 @@ public class Server {
             }
         }).start();
         heartbeatExecutor.scheduleAtFixedRate(() -> checkHeartbeat(), 10, 10, TimeUnit.SECONDS);
+        heartbeat.scheduleAtFixedRate(() -> checkHeart(), 10, 10, TimeUnit.SECONDS);
         serverFrame.setKickUserListener(username -> {
             SocketChannel targetChannel = onlineUsers.get(username);
             if (targetChannel != null) {
@@ -80,6 +87,30 @@ public class Server {
             }
         });
 
+    }
+
+    private static void checkHeart() {
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<SocketChannel, Long>> iterator = lastHeart.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<SocketChannel, Long> entry = iterator.next();
+            SocketChannel socketChannel = entry.getKey();
+            long lastHeartbeat = entry.getValue();
+            if (now - lastHeartbeat > 10000) {
+                String name = getUserchannel(socketChannel);
+                if(name != null) {
+                    try{
+                        serverFrame.appendLog(name+"断联，已关闭连接");
+                        socketChannel.close();
+                        onlineUsers.remove(name);
+                        serverFrame.removeUser(name);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            iterator.remove();
+        }
     }
 
     private static void listen() throws IOException {
@@ -192,6 +223,9 @@ public class Server {
                     } else {
                         result = "密码错误";
                     }
+                } else if ("PING".equalsIgnoreCase(action)) {
+                    lastHeart.put(socketChannel, System.currentTimeMillis());
+                    result = "*";
                 } else if ("REGISTER".equalsIgnoreCase(action)) {
                     if (UserService.register(action1, action2)) {
                         result = "注册成功,请重新登录";
@@ -331,7 +365,9 @@ public class Server {
                 if(!result.equals("*")){
                     socketChannel.write(response);
                 }
-                serverFrame.appendLog("收到消息: " + msg);
+                if(!msg.contains("PING")){
+                    serverFrame.appendLog("收到消息: " + msg);
+                }
                 if(result.equals("已退出登录")){
                     socketChannel.close();
                 }

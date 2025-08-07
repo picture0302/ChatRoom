@@ -26,8 +26,8 @@ public class LoginFrame extends JFrame {
     public LoginFrame(SocketChannel channel) {
         this.socketChannel = channel;
         setUpUI();
-
         // 启动Selector线程
+        sendHeartbeat();
         new Thread(this::startSelector).start();
     }
 
@@ -115,7 +115,7 @@ public class LoginFrame extends JFrame {
                         if (bytesRead > 0) {
                             buffer.flip();
                             String response = new String(buffer.array(), 0, buffer.limit());
-                            // Swing UI更新需要切换到事件线程
+                            // Swing UI更新需要切换到事件线程，在处理线程事件时可以直接反映到UI界面上
                             SwingUtilities.invokeLater(() -> handleServerResponse(response));
                         } else if (bytesRead == -1) {
                             sc.close();
@@ -171,6 +171,22 @@ public class LoginFrame extends JFrame {
             e.printStackTrace();
         }
     }
+
+    private void sendHeartbeat() {
+        new Thread(() -> {
+            try {
+                while (true) {
+                    String re = "PING,-,-";
+                    ByteBuffer buffer = ByteBuffer.wrap(re.getBytes());
+                    socketChannel.write(buffer);
+                    Thread.sleep(5000);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
     //检查心跳包
     public static void showHeartbeatTimeoutDialog(Component parent, int timeoutMillis,String username) {
         final JDialog dialog = new JDialog((Frame) null, "心跳超时提醒", true);
@@ -213,7 +229,6 @@ public class LoginFrame extends JFrame {
         });
         timer.setRepeats(false);
         timer.start();
-
         dialog.setVisible(true);
     }
 }
