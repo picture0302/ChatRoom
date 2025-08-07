@@ -664,7 +664,7 @@ public class ChatUI extends JFrame {
                 appendFileMessage(sender, file.getName(), file.length());
             } else chatArea.append("["+sender+"]"+": " + message + "\n");
         }
-        if (!isGroupChat && currentTarget != null && !sender.contains(currentTarget)) {
+        if (!isGroupChat && currentTarget != null && !sender.contains(username)) {
             // 只处理当前私聊对象的消息
             File file = new File(message);
             if(file.exists()&&file.length()!=0){
